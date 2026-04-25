@@ -29,6 +29,7 @@ import {
   History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { GoogleGenAI, Type } from "@google/genai";
 import { 
   BarChart, 
   Bar, 
@@ -46,21 +47,10 @@ import {
   Area
 } from 'recharts';
 import { cn } from './lib/utils';
+import { calculateResilienceScore, getStatusFromScore, type AnalysisResult } from './lib/score';
 
 // --- Types ---
 type View = 'dashboard' | 'ingestion' | 'analysis' | 'reports';
-
-interface AnalysisResult {
-  total_income: number;
-  total_expenditure: number;
-  fuliza_repayment_speed: 'fast' | 'medium' | 'slow' | 'none';
-  utility_consistency: 'high' | 'medium' | 'low';
-  savings_frequency: 'regular' | 'occasional' | 'none';
-  top_insights: string[];
-  behavioral_advice: string;
-  resilienceScore: number;
-  status: string;
-}
 
 const DEFAULT_RESULT: AnalysisResult = {
   total_income: 0,
@@ -909,18 +899,59 @@ export default function App() {
 
   const handleAnalyze = async (rawText: string) => {
     try {
-      const response = await fetch('/api/analyze-finance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rawText }),
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("GEMINI_API_KEY is missing. Please set it in AI Studio Secrets.");
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Analyze these Kenyan financial logs (M-Pesa, Fuliza, KPLC): \n\n ${rawText}`,
+        config: {
+          systemInstruction: `
+            As a 'Kenyan Financial Data Parser', extract data from the provided logs.
+            Strictly extract:
+            1. total_income (number)
+            2. total_expenditure (number)
+            3. fuliza_repayment_speed (enum: 'fast', 'medium', 'slow', 'none')
+            4. utility_consistency (enum: 'high', 'medium', 'low')
+            5. savings_frequency (enum: 'regular', 'occasional', 'none')
+            6. top_insights (array of strings, Sheng/English mix)
+            7. behavioral_advice (string, Sheng/English mix)
+          `,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              total_income: { type: Type.NUMBER },
+              total_expenditure: { type: Type.NUMBER },
+              fuliza_repayment_speed: { type: Type.STRING, enum: ['fast', 'medium', 'slow', 'none'] },
+              utility_consistency: { type: Type.STRING, enum: ['high', 'medium', 'low'] },
+              savings_frequency: { type: Type.STRING, enum: ['regular', 'occasional', 'none'] },
+              top_insights: { type: Type.ARRAY, items: { type: Type.STRING } },
+              behavioral_advice: { type: Type.STRING }
+            },
+            required: ['total_income', 'total_expenditure', 'fuliza_repayment_speed', 'utility_consistency', 'savings_frequency', 'top_insights', 'behavioral_advice']
+          }
+        },
       });
-      if (!response.ok) throw new Error('Analysis failed');
-      const data = await response.json();
-      setAnalysisData(data);
-      setActiveView('dashboard'); // Jump to dashboard to see results
+
+      const extractedData = JSON.parse(response.text || "{}");
+      const score = calculateResilienceScore(extractedData);
+      
+      const result: AnalysisResult = {
+        ...extractedData,
+        resilienceScore: score,
+        status: getStatusFromScore(score)
+      };
+
+      setAnalysisData(result);
+      setActiveView('dashboard');
     } catch (err) {
       console.error(err);
-      alert('Failed to analyze data. Please check your credentials and try again.');
+      alert('Analysis failed. Trace: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
