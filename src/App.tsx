@@ -111,7 +111,24 @@ const Sidebar = ({ activeView, setView }: { activeView: View, setView: (v: View)
       </nav>
 
       <div className="p-4 border-t border-slate-100">
-        <button className="w-full bg-slate-900 text-white py-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium hover:bg-slate-800 transition-colors shadow-lg active:scale-95">
+        <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl mb-4 group cursor-pointer hover:bg-slate-100 transition-all">
+          <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden bg-slate-200">
+            <img 
+              src="https://api.dicebear.com/7.x/avataaars/svg?seed=Michael" 
+              alt="User" 
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <p className="text-xs font-bold text-slate-900 truncate">Michael Kimani</p>
+            <p className="text-[10px] text-slate-400 font-medium truncate">Strategic Entity</p>
+          </div>
+          <Settings className="w-3.5 h-3.5 text-slate-300 hover:text-slate-900 transition-colors" />
+        </div>
+        <button 
+          onClick={() => setView('ingestion')}
+          className="w-full bg-slate-900 text-white py-3 rounded-lg flex items-center justify-center gap-2 text-sm font-medium hover:bg-slate-800 transition-colors shadow-lg active:scale-95"
+        >
           <Plus className="w-4 h-4" />
           New Analysis
         </button>
@@ -140,7 +157,10 @@ const Header = ({ title }: { title: string }) => (
       <button className="p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors">
         <Settings className="w-5 h-5" />
       </button>
-      <div className="h-8 w-8 rounded-full bg-slate-200 border border-slate-300 overflow-hidden ml-2 cursor-pointer">
+      <div 
+        onClick={() => alert("Profile settings are coming soon in the next update!")}
+        className="h-8 w-8 rounded-full bg-slate-200 border border-slate-300 overflow-hidden ml-2 cursor-pointer hover:ring-2 hover:ring-slate-900/20 transition-all"
+      >
         <img 
           src="https://api.dicebear.com/7.x/avataaars/svg?seed=Michael" 
           alt="User Profile" 
@@ -359,22 +379,74 @@ const DashboardView = ({ data }: { data: AnalysisResult }) => {
   );
 };
 
-const IngestionHubView = ({ onAnalyze }: { onAnalyze: (text: string) => void }) => {
+interface FileData {
+  data: string;
+  mimeType: string;
+  name: string;
+}
+
+const IngestionHubView = ({ onAnalyze }: { onAnalyze: (text: string, files: FileData[]) => void }) => {
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [files, setFiles] = useState<FileData[]>([]);
+
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles) return;
+
+    const newFiles: FileData[] = [];
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      const base64 = await fileToBase64(file);
+      newFiles.push({
+        data: base64.split(',')[1],
+        mimeType: file.type,
+        name: file.name
+      });
+    }
+    setFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
 
   const handleSubmit = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && files.length === 0) return;
     setIsLoading(true);
-    await onAnalyze(inputText);
+    await onAnalyze(inputText, files);
     setIsLoading(false);
   };
 
   const sampleLogs = `
-    M-PESA: KES 4,500.00 confirmed. Trans ID: XYZ789. Sent to Wholesale Traders.
-    FULIZA: Automatic deduction KES 850.00. Trans ID: ABC123.
-    KPLC: Token purchase KES 1,000.00 confirmed. Trans ID: KPLC456. Consistency high.
-    M-SHWARI: KES 2,000.00 saved regular savings.
+MPESA: RZH9XYZ789 Confirmed. KES 4,500.00 sent to Wholesale Traders for account INV-990 on 25/4/26 at 10:15 AM. New M-PESA balance is KES 1,240.00. Use M-PESA to pay for your NHIF today!
+
+(0722123456): Niaje bro, nimesend ile 2k kwa makosa. Nirudishie kwa hii number tafadhali. 
+
+KPLC: Token purchase KES 1,000.00 confirmed. Trans ID: KPLC456. Meter: 37190001234. Token: 5584-9920-3341-0092-1182. Units: 38.4. Value: KES 780.00, VAT: KES 120.00. 
+
+MPESA: RZH2DEF456 Confirmed. KES 850.00 automatically deducted to settle your outstanding Fuliza M-PESA. Balance is KES 390.00. Fuliza limit is 5,000.00.
+
+Safaricom: Get 500MB for only 50/- valid for 24hrs! Dial *544# to buy. 
+
+M-SHWARI: KES 2,000.00 deposited to your M-Shwari account from M-PESA on 25/4/26. New M-Shwari balance is KES 15,500.00. Loan limit: 8,000.00.
+
+MPESA: RZH1ABC123 Confirmed. KES 1,200.00 received from John Doe 0712345678 on 24/4/26 at 2:30 PM. New M-PESA balance is KES 5,740.00.
+Receipt No. | Completion Time | Details | Status | Paid In | Paid Out | Balance
+-----------------------------------------------------------------------------------
+RZH9XYZ789 | 2026-04-25 10:15 | Sent to Wholesale Traders | Completed | - | 4,500.00 | 1,240.00
+RZH2DEF456 | 2026-04-25 09:30 | Fuliza M-Pesa Deduction | Completed | - | 850.00 | 390.00
+RZH1ABC123 | 2026-04-24 14:30 | Received from 0712***678 | Completed | 1,200.00 | - | 5,740.00
+RZH0KPLC456| 2026-04-23 20:00 | Pay Bill to 888880 (KPLC) | Completed | - | 1,000.00 | 4,540.00
+RZH8FULZA  | 2026-04-22 11:10 | M-Pesa Overdraw | Completed | 350.00 | - | 0.00
+RZH7MSHWARI| 2026-04-20 08:00 | M-Shwari Deposit | Completed | - | 2,000.00 | 5,540.00
   `;
 
   return (
@@ -400,14 +472,49 @@ const IngestionHubView = ({ onAnalyze }: { onAnalyze: (text: string) => void }) 
                   placeholder="Paste M-Pesa statements, Fuliza logs, or KPLC token SMS here..."
                   className="w-full h-48 bg-transparent text-sm text-slate-900 focus:outline-none resize-none"
                 />
+                
+                {files.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+                    {files.map((file, i) => (
+                      <div key={i} className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-1.5 shadow-sm group">
+                        <FileText className="w-3 h-3 text-slate-400" />
+                        <span className="text-[10px] font-bold text-slate-600 truncate max-w-[120px]">{file.name}</span>
+                        <button 
+                          onClick={() => setFiles(prev => prev.filter((_, idx) => idx !== i))}
+                          className="text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <Plus className="w-3 h-3 rotate-45" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
                 <div className="flex justify-between items-center mt-4">
-                  <button 
-                    onClick={() => setInputText(sampleLogs)}
-                    className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest hover:underline"
-                  >
-                    Load Sample Logs
-                  </button>
-                  <span className="text-[10px] text-slate-400 font-medium">AI automatically detects entities and sentiment</span>
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={() => setInputText(sampleLogs)}
+                      className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest hover:underline"
+                    >
+                      Load Sample Logs
+                    </button>
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-[10px] font-bold text-slate-600 uppercase tracking-widest hover:underline flex items-center gap-1"
+                    >
+                      <CloudUpload className="w-3 h-3" />
+                      Upload Statements/Photos
+                    </button>
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      onChange={handleFileChange} 
+                      multiple 
+                      className="hidden" 
+                      accept="image/*,application/pdf,.csv"
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium">AI can parse photos of ledgers or CSV statements</span>
                 </div>
               </div>
 
@@ -770,6 +877,7 @@ const HealthReportsView = ({ data }: { data: AnalysisResult }) => {
         </div>
         <button 
           onClick={() => window.print()}
+          title="Print Health Report"
           className="bg-slate-900 text-white w-12 h-12 rounded-xl flex items-center justify-center hover:bg-slate-800 transition-all shadow-xl shadow-slate-900/10 fixed bottom-8 right-12 z-20 print:hidden"
         >
           <Printer className="w-5 h-5" />
@@ -897,7 +1005,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [analysisData, setAnalysisData] = useState<AnalysisResult>(DEFAULT_RESULT);
 
-  const handleAnalyze = async (rawText: string) => {
+  const handleAnalyze = async (rawText: string, files: FileData[] = []) => {
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -906,12 +1014,27 @@ export default function App() {
 
       const ai = new GoogleGenAI({ apiKey });
       
+      const fileParts = files.map(f => ({
+        inlineData: {
+          data: f.data,
+          mimeType: f.mimeType
+        }
+      }));
+
+      const textPart = {
+        text: `Analyze these Kenyan financial logs (M-Pesa, Fuliza, KPLC), statements, or ledger photos: \n\n ${rawText}`
+      };
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Analyze these Kenyan financial logs (M-Pesa, Fuliza, KPLC): \n\n ${rawText}`,
+        contents: {
+          parts: [...fileParts, textPart]
+        },
         config: {
           systemInstruction: `
-            As a 'Kenyan Financial Data Parser', extract data from the provided logs.
+            As a 'Kenyan Financial Data Parser', extract data from the provided logs, photos of ledger books, or PDF statements.
+            If images or PDFs are provided, perform OCR and semantic parsing to understand the transactions.
+            
             Strictly extract:
             1. total_income (number)
             2. total_expenditure (number)
