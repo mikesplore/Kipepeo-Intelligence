@@ -29,7 +29,6 @@ import {
   History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI, Type } from "@google/genai";
 import { 
   BarChart, 
   Bar, 
@@ -48,6 +47,7 @@ import {
 } from 'recharts';
 import { cn } from './lib/utils';
 import { calculateResilienceScore, getStatusFromScore, type AnalysisResult } from './lib/score';
+import { GoogleGenAI, Type } from "@google/genai";
 
 // --- Types ---
 type View = 'dashboard' | 'ingestion' | 'analysis' | 'reports';
@@ -1001,15 +1001,17 @@ const HealthReportsView = ({ data }: { data: AnalysisResult }) => {
 
 // --- Main App ---
 
+const GENAI_API_KEY = "AIzaSyBaGeWZ5qU_udcrNJChHhPkDIvoa5g7BDg";
+
 export default function App() {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [analysisData, setAnalysisData] = useState<AnalysisResult>(DEFAULT_RESULT);
 
   const handleAnalyze = async (rawText: string, files: FileData[] = []) => {
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = GENAI_API_KEY;
       if (!apiKey) {
-        throw new Error("GEMINI_API_KEY is missing. Please set it in AI Studio Secrets.");
+        throw new Error("API Key is missing.");
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -1022,28 +1024,16 @@ export default function App() {
       }));
 
       const textPart = {
-        text: `Analyze these Kenyan financial logs (M-Pesa, Fuliza, KPLC), statements, or ledger photos: \n\n ${rawText}`
+        text: rawText || "Analyze the provided documents/images."
       };
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3-flash-preview", 
         contents: {
           parts: [...fileParts, textPart]
         },
         config: {
-          systemInstruction: `
-            As a 'Kenyan Financial Data Parser', extract data from the provided logs, photos of ledger books, or PDF statements.
-            If images or PDFs are provided, perform OCR and semantic parsing to understand the transactions.
-            
-            Strictly extract:
-            1. total_income (number)
-            2. total_expenditure (number)
-            3. fuliza_repayment_speed (enum: 'fast', 'medium', 'slow', 'none')
-            4. utility_consistency (enum: 'high', 'medium', 'low')
-            5. savings_frequency (enum: 'regular', 'occasional', 'none')
-            6. top_insights (array of strings, Sheng/English mix)
-            7. behavioral_advice (string, Sheng/English mix)
-          `,
+          systemInstruction: "As a 'Kenyan Financial Data Parser', extract data from the provided logs, photos of ledger books, or PDF statements. If images or PDFs are provided, perform OCR and semantic parsing to understand the transactions. Ensure the 'top_insights' and 'behavioral_advice' are written in a mix of Sheng and English to keep it local and relatable.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -1058,10 +1048,10 @@ export default function App() {
             },
             required: ['total_income', 'total_expenditure', 'fuliza_repayment_speed', 'utility_consistency', 'savings_frequency', 'top_insights', 'behavioral_advice']
           }
-        },
+        }
       });
 
-      const extractedData = JSON.parse(response.text || "{}");
+      const extractedData = JSON.parse(response.text);
       const score = calculateResilienceScore(extractedData);
       
       const result: AnalysisResult = {
@@ -1074,7 +1064,7 @@ export default function App() {
       setActiveView('dashboard');
     } catch (err) {
       console.error(err);
-      alert('Analysis failed. Trace: ' + (err instanceof Error ? err.message : String(err)));
+      alert('Analysis failed: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
