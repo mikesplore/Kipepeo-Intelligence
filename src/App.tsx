@@ -1009,9 +1009,9 @@ export default function App() {
 
   const handleAnalyze = async (rawText: string, files: FileData[] = []) => {
     try {
-      const apiKey = GENAI_API_KEY;
+      const apiKey = GENAI_API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) {
-        throw new Error("API Key is missing.");
+        throw new Error("API Key is missing. Please set it in AI Studio Secrets or ensure GENAI_API_KEY is valid.");
       }
 
       const ai = new GoogleGenAI({ apiKey });
